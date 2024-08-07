@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.4/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-blue-500 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Driver Dashboard</h1>
+            <nav>
+                <a href="/profile" class="mr-4 hover:underline">Profile</a>
+                <a href="/logout" class="hover:underline">Logout</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-4">
+        <h2 class="text-xl font-bold mb-4">New Orders</h2>
+
+        <div id="orders" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Orders will be dynamically inserted here -->
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white p-4 text-center">
+        <p>&copy; 2024 Geo Ride. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Fetch new orders for the driver
+        fetch('/payments/api/orders')
+            .then(response => response.json())
+            .then(data => displayOrders(data.orders))
+            .catch(error => console.error('Error fetching orders:', error));
+
+        function displayOrders(orders) {
+            const ordersContainer = document.getElementById('orders');
+            orders.reverse().forEach(order => {
+                const orderCard = document.createElement('div');
+                orderCard.className = 'bg-white p-4 rounded-lg shadow-md';
+
+                orderCard.innerHTML = `
+                    <h3 class="text-lg font-semibold">Order #${order.id}</h3>
+                    <p><strong>Pickup:</strong> ${order.pickup_location}</p>
+                    <p><strong>Destination:</strong> ${order.destination}</p>
+                    <p><strong>Amount Paid:</strong> ₦${order.amount_paid}</p>
+                    <button class="mt-2 w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600">Accept Order</button>
+                `;
+                ordersContainer.appendChild(orderCard);
+            });
+        }
+    </script>
+</body>
+</html>

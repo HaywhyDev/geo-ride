@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo Ride - Welcome</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.4/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Include Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://cdn.emailjs.com/dist/email.min.js"></script>
+    <script>
+        var currentUserId = "{{ user.id }}"; // Pass user ID from Flask to JavaScript
+    </script>
+    <style>
+        /* Ensures modal appears above map and other elements */
+        #payment-modal {
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-blue-500 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Geo Ride</h1>
+            <nav>
+                {% if user.is_authenticated %}
+                <a href="/profile" class="mr-4 hover:underline">Profile</a>
+                <a href="/logout" class="hover:underline">Logout</a>
+                {% else %}
+                <a href="/user/login" class="mr-4 hover:underline">Login</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-4 flex flex-col md:flex-row">
+        <!-- Ride Request Form -->
+        <div class="bg-white p-6 rounded-lg shadow-lg w-full md:w-1/3 mb-4 md:mb-0 md:mr-4">
+            <h2 class="text-xl font-bold mb-4">Request a Ride</h2>
+            <form id="ride-request-form">
+                <div class="mb-4">
+                    <label for="pickup" class="block text-sm font-medium text-gray-700">Pickup Location</label>
+                    <input type="text" id="pickup" name="pickup" placeholder="Enter pickup location" class="w-full p-2 border rounded-md" required>
+                </div>
+                <div class="mb-4">
+                    <label for="destination" class="block text-sm font-medium text-gray-700">Destination</label>
+                    <input type="text" id="destination" name="destination" placeholder="Enter destination" class="w-full p-2 border rounded-md" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Request Ride</button>
+            </form>
+
+            <!-- Driver List -->
+            <div id="driver-list" class="mt-4 hidden">
+                <h3 class="text-lg font-semibold mb-2">Available Drivers</h3>
+                <ul id="drivers" class="list-disc pl-5"></ul>
+            </div>
+        </div>
+
+        <!-- Map Display -->
+        <div class="flex-grow bg-white rounded-lg shadow-lg" style="height: 500px;">
+            <div id="map" class="h-full w-full rounded-lg"></div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white p-4 text-center">
+        <p>&copy; 2024 Geo Ride. All rights reserved.</p>
+        <div class="mt-4">
+            <a href="/driver/signup" class="text-blue-400 hover:underline mx-2">Sign Up as a Driver</a>
+            <a href="/driver/login" class="text-blue-400 hover:underline mx-2">Login as a Driver</a>
+        </div>
+    </footer>
+    
+    <!-- Payment Modal -->
+    <div id="payment-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md mx-4 md:mx-0">
+            <h2 class="text-xl font-bold mb-4">Payment Details</h2>
+            <p class="mb-4">Total Fare: ₦300</p>
+            <button id="pay-now" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Pay Now</button>
+            <button class="mt-4 w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600" onclick="closePaymentModal()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Include Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <!-- Include Paystack JS -->
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+
+    <script>
+        // Coordinates for FUTA area
+        var futuraCenter = [7.3000, 5.1333]; // Approximate center
+        var futuraBounds = [
+            [7.2833, 5.1167], // Southwest corner
+            [7.3167, 5.1500]  // Northeast corner
+        ];
+
+        // Initialize map
+        var map = L.map('map', {
+            center: futuraCenter,
+            zoom: 14,
+            maxBounds: futuraBounds,
+            maxBoundsViscosity: 1.0
+        });
+
+        // Set up the OSM layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Example marker for a driver location
+        var driverMarker = L.marker(futuraCenter).addTo(map)
+            .bindPopup('Driver Location')
+            .openPopup();
+
+        // Set map bounds to restrict view to FUTA area
+        var bounds = L.latLngBounds(futuraBounds);
+        map.setMaxBounds(bounds);
+
+        // Form submission handler
+        document.getElementById('ride-request-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            // Fetch the pickup and destination from the form
+            var pickupLocation = document.getElementById('pickup').value;
+            var destination = document.getElementById('destination').value;
+
+            // Check user authentication
+            fetch('/check-auth')
+                .then(response => {
+                    if (response.status === 401) { // Unauthorized
+                        window.location.href = '/user/login';
+                    } else if (response.status === 200) { // OK
+                        // User is authenticated, fetch drivers
+                        fetch('/drivers')
+                            .then(response => response.json())
+                            .then(data => {
+                                displayDrivers(data);
+                            })
+                            .catch(error => console.error('Error fetching drivers:', error));
+                    } else {
+                        console.error('Unexpected response status:', response.status);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error during fetch:', error);
+                });
+        });
+
+        // Display drivers in a list
+        function displayDrivers(drivers) {
+            var driverList = document.getElementById('drivers');
+            driverList.innerHTML = ''; // Clear existing list
+
+            drivers.forEach(driver => {
+                var li = document.createElement('li');
+                li.className = 'cursor-pointer hover:bg-gray-200 p-2 rounded';
+                li.textContent = driver.name;
+                li.addEventListener('click', function() {
+                    showPaymentModal(driver);
+                });
+                driverList.appendChild(li);
+            });
+
+            document.getElementById('driver-list').classList.remove('hidden');
+        }
+
+        // Show payment modal
+        function showPaymentModal(driver) {
+            // Store the selected driver ID for use after payment
+            document.getElementById('payment-modal').dataset.driverId = driver.id;
+            document.getElementById('payment-modal').classList.remove('hidden');
+        }
+
+        // Close payment modal
+        function closePaymentModal() {
+            document.getElementById('payment-modal').classList.add('hidden');
+        }
+
+       // Initialize EmailJS
+emailjs.init('wfx417tfWrYqMAvgF');
+
+// Function to fetch driver's email from the backend
+function fetchDriverEmail(driverId) {
+    return fetch(`/api/driver/${driverId}/email`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.email) {
+                return data.email;
+            } else {
+                throw new Error('Driver email not found');
+            }
+        });
+}
+
+// Function to send email to driver
+function sendEmailToDriver(email, pickupLocation, destination, amountPaid) {
+    console.log('Sending email with the following details:');
+    console.log('To:', email);
+    console.log('Pickup Location:', pickupLocation);
+    console.log('Destination:', destination);
+    console.log('Amount Paid:', amountPaid);
+
+    return emailjs.send('service_ju4lwek', 'template_id', {
+        to_email: email,
+        pickup_location: pickupLocation,
+        destination: destination,
+        amount_paid: amountPaid
+    });
+}
+
+// Function to handle payment process
+function handlePayment(driverEmail, pickupLocation, destination, amount) {
+    var handler = PaystackPop.setup({
+        key: 'pk_test_e70934bf527582834bfecd9116ef305142598df0',
+        email: '{{ user.email }}',
+        amount: amount * 100, // Convert to kobo
+        currency: 'NGN',
+        ref: 'txn_' + Math.floor((Math.random() * 1000000000) + 1),
+        callback: function(response) {
+            verifyPayment(response.reference, driverEmail, pickupLocation, destination, amount);
+        },
+        onClose: function() {
+            alert('Payment window closed');
+        }
+    });
+    handler.openIframe();
+}
+
+// Function to verify payment and send email
+function verifyPayment(reference, driverEmail, pickupLocation, destination, amount) {
+    fetch('/payments/verify-payment', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            reference: reference,
+            driver_id: document.getElementById('payment-modal').dataset.driverId,
+            user_id: currentUserId,
+            pickup_location: pickupLocation,
+            destination: destination
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert('Payment successful! Driver has been credited.');
+            return sendEmailToDriver(driverEmail, pickupLocation, destination, amount + ' NGN');
+        } else {
+            throw new Error('Payment verification failed');
+        }
+    })
+    .then(() => {
+        console.log('Email sent successfully');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred: ' + error.message);
+    });
+}
+
+// Main event listener for the pay now button
+document.getElementById('pay-now').addEventListener('click', function() {
+    var pickupLocation = document.getElementById('pickup').value;
+    var destination = document.getElementById('destination').value;
+    var driverId = document.getElementById('payment-modal').dataset.driverId;
+    var amount = 300; // Amount in Naira. Replace with actual calculation if needed.
+
+    fetchDriverEmail(driverId)
+        .then(driverEmail => {
+            console.log('Driver Email:', driverEmail);
+            handlePayment(driverEmail, pickupLocation, destination, amount);
+        })
+        .catch(error => {
+            console.error('Error fetching driver email:', error);
+            alert('Unable to process payment at this time. Please try again later.');
+        });
+});
+        
+        function sendEmailToDriver(email, driverName, pickupLocation, destination, amountPaid) {
+            emailjs.send('service_ju4lwek', 'template_befvdg8', {
+                to_email: email,
+                driver_name: driverName,
+                pickup_location: pickupLocation,
+                destination: destination,
+                amount_paid: amountPaid
+            })
+            .then(response => {
+                console.log('Email sent successfully:', response);
+            })
+            .catch(error => {
+                console.error('Failed to send email:', error);
+            });
+        }
+     </script>
+</body>
+</html>

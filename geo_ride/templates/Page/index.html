@@ -248,7 +248,20 @@ function verifyPayment(reference, driverEmail, pickupLocation, destination, amou
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert('Payment successful! Driver has been credited.');
+            // Change modal content to success message
+            const paymentModal = document.getElementById('payment-modal');
+            paymentModal.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md mx-4 md:mx-0">
+                    <h2 class="text-xl font-bold mb-4 text-green-500">Payment Successful!</h2>
+                    <p class="mb-4">Thank you for your payment. Your ride has been successfully booked.</p>
+                    <button class="mt-4 w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600" onclick="closePaymentModal()">Close</button>
+                </div>
+            `;
+
+            // Automatically close modal after 3 seconds
+            setTimeout(closePaymentModal, 3000);
+
+            // Optionally send email to the driver
             return sendEmailToDriver(driverEmail, pickupLocation, destination, amount + ' NGN');
         } else {
             throw new Error('Payment verification failed');
@@ -262,6 +275,7 @@ function verifyPayment(reference, driverEmail, pickupLocation, destination, amou
         alert('An error occurred: ' + error.message);
     });
 }
+
 
 // Main event listener for the pay now button
 document.getElementById('pay-now').addEventListener('click', function() {

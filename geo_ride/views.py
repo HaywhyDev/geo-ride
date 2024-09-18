@@ -40,4 +40,12 @@ def get_driver_email(driver_id):
         return jsonify({'email': driver.email})
     else:
         return jsonify({'error': 'Driver not found'}), 404
+    
+    
+@views.route('/profile', methods=['GET'])
+@login_required
+def profile():
+    user = current_user  # Get the currently logged-in user
+    role = "Driver" if user.role == "driver" else "User"  # Check if the user is a driver or a user
+    return render_template('Page/profile.html', user=user, role=role)
 
